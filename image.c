@@ -160,7 +160,6 @@ int main(int argc,char** argv){
     destImage.width=srcImage.width;
     destImage.data=malloc(sizeof(uint8_t)*destImage.width*destImage.bpp*destImage.height);
 
-    long thread;
     pthread_t *thread_handles;
     thread_handles = (pthread_t *)malloc(thread_count * sizeof(pthread_t));
 
