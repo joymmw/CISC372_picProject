@@ -10,8 +10,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#include <pthread.h>
-#define thread_count 10
+#include <omp.h>
 
 typedef struct
 {
@@ -68,46 +67,20 @@ uint8_t getPixelValue(Image* srcImage,int x,int y,int bit,Matrix algorithm){
 //            algorithm: The kernel matrix to use for the convolution
 //Returns: Nothing
 
-void *threaded_convolute(void *args){
-    // accessing arguments
-    thread_arguments *thread_args = (thread_arguments *)args;
-    Image *srcImage = thread_args->srcImage;
-    Image *destImage = thread_args->destImage;
-    enum KernelTypes algorithm = thread_args->algorithm;
-    long rank = thread_args->rank;
+void convolute(Image* srcImage,Image* destImage,Matrix algorithm){
+    int row,pix,bit,span;
+    span=srcImage->bpp*srcImage->bpp;
 
-    int height = srcImage->height;
-    int width = srcImage->width;
-    int bpp = srcImage->bpp;
-
-    int thread_rows = height / thread_count;
-
-    int row_start, row_end, row, pix, bit, span;
-    span = bpp * bpp;
-
-    // start is in multiples of rank
-    row_start = rank * thread_rows;
-    row_end;
-
-    // end should be before next start... or very end of rows
-    if ((thread_rows * (rank+1)) < height){
-        row_end = (height / thread_count) * (rank+1);
-    }
-    else{
-        row_end = height;
-    }
-
-
-    for (row = row_start; row < row_end;row++){
-
-        for (pix = 0; pix < width; pix++){
-
-            for (bit = 0; bit < bpp; bit++){
-                destImage->data[Index(pix, row, width, bit, bpp)] = getPixelValue(srcImage, pix, row,bit, algorithms[algorithm]);
+    #pragma omp for
+    for (row=0;row<srcImage->height;row++){
+        for (pix=0;pix<srcImage->width;pix++){
+            for (bit=0;bit<srcImage->bpp;bit++){
+                destImage->data[Index(pix,row,srcImage->width,bit,srcImage->bpp)]=getPixelValue(srcImage,pix,row,bit,algorithm);
             }
         }
     }
 }
+
 
 //Usage: Prints usage information for the program
 //Returns: -1
@@ -160,33 +133,15 @@ int main(int argc,char** argv){
     destImage.width=srcImage.width;
     destImage.data=malloc(sizeof(uint8_t)*destImage.width*destImage.bpp*destImage.height);
 
-    long thread;
-    pthread_t *thread_handles;
-    thread_handles = (pthread_t *)malloc(thread_count * sizeof(pthread_t));
-
-    thread_arguments all_args[thread_count];
-
-    for (int thread = 0; thread < thread_count; thread++){
-            all_args[thread].srcImage = &srcImage;
-            all_args[thread].destImage = &destImage;
-            all_args[thread].algorithm = type;
-            all_args[thread].rank = thread;
-
-            pthread_create(&thread_handles[thread], NULL, threaded_convolute, &all_args[thread]);
-    }
-
-    for (int thread = 0; thread < thread_count; thread++){
-            pthread_join(thread_handles[thread], NULL);
-    }
+    #pragma omp parallel
+    convolute(&srcImage,&destImage,algorithms[type]);
 
     stbi_write_png("output.png",destImage.width,destImage.height,destImage.bpp,destImage.data,destImage.bpp*destImage.width);
     stbi_image_free(srcImage.data);
 
-    free(thread_handles);
     free(destImage.data);
     t2=time(NULL);
     printf("Took %ld seconds\n",t2-t1);
     return 0;
 }
-
 
